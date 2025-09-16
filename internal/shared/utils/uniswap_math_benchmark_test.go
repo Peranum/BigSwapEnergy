@@ -74,36 +74,6 @@ func BenchmarkCalculateUniswapV2SwapAmountAllocations(b *testing.B) {
 	}
 }
 
-// BenchmarkAllocationsComparison compares allocations with and without pool
-func BenchmarkAllocationsComparison(b *testing.B) {
-	reserveIn := new(big.Int).SetUint64(13_451_234_567_890)
-	reserveOut := new(big.Int).SetUint64(98_765_432_109_876)
-	amountIn := new(big.Int).SetUint64(1_000_000)
-
-	b.Run("WithPool", func(b *testing.B) {
-		b.ReportAllocs()
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			result := GlobalBigIntPool.Get()
-			CalculateUniswapV2SwapAmount(amountIn, reserveIn, reserveOut, result, GlobalBigIntPool)
-			GlobalBigIntPool.Put(result)
-		}
-	})
-
-	b.Run("WithoutPool", func(b *testing.B) {
-		b.ReportAllocs()
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			numerator := new(big.Int).Mul(amountIn, big.NewInt(997))
-			tmpCalc := new(big.Int).Mul(reserveIn, big.NewInt(1000))
-			denominator := new(big.Int).Add(tmpCalc, numerator)
-			tmpCalc.Mul(numerator, reserveOut)
-			result := new(big.Int).Div(tmpCalc, denominator)
-			_ = result
-		}
-	})
-}
-
 // BenchmarkMemoryPressure tests behavior under memory pressure
 func BenchmarkMemoryPressure(b *testing.B) {
 	reserveIn := new(big.Int).SetUint64(13_451_234_567_890)
