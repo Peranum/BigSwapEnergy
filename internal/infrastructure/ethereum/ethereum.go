@@ -88,44 +88,7 @@ func NewEthereumClient(rpcURL string, poolSize int, logger *zap.Logger) (Ethereu
 		},
 	}
 
-	go pool.warmupConnections()
-
 	return pool, nil
-}
-
-func (p *ConnectionPool) warmupConnections() {
-	p.mu.RLock()
-	poolSize := len(p.clients)
-	p.mu.RUnlock()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	var wg sync.WaitGroup
-	wg.Add(poolSize)
-
-	for i := 0; i < poolSize; i++ {
-		go func(index int) {
-			defer wg.Done()
-
-			p.mu.RLock()
-			client := p.clients[index]
-			p.mu.RUnlock()
-
-			_, err := client.BlockNumber(ctx)
-			if err != nil {
-				p.logger.Warn("Failed to warm up connection",
-					zap.Int("connection", index),
-					zap.Error(err))
-			} else {
-				p.logger.Debug("Connection warmed up successfully",
-					zap.Int("connection", index))
-			}
-		}(i)
-	}
-
-	wg.Wait()
-	p.logger.Info("Connection pool warmup completed")
 }
 
 func (p *ConnectionPool) getClient() *ethclient.Client {

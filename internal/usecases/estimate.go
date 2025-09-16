@@ -24,7 +24,6 @@ type EstimateService interface {
 type EstimateServiceImpl struct {
 	uniswapV2Client uniswap_v2.UniswapV2Client
 	logger          *zap.Logger
-	bigIntPool      *utils.BigIntPool
 }
 
 // NewEstimateService creates a new estimate service
@@ -35,7 +34,6 @@ func NewEstimateService(
 	return &EstimateServiceImpl{
 		uniswapV2Client: uniswapV2Client,
 		logger:          logger,
-		bigIntPool:      utils.NewBigIntPool(),
 	}
 }
 
@@ -85,9 +83,9 @@ func (s *EstimateServiceImpl) EstimateSwapAmount(ctx context.Context, poolAddres
 	if err != nil {
 		return nil, fmt.Errorf("%w: unable to connect to blockchain network: %v", apperrors.ErrExternalService, err)
 	}
-	blockNum := s.bigIntPool.Get()
+	blockNum := utils.GlobalBigIntPool.Get()
 	blockNum.SetUint64(blockNumber)
-	defer s.bigIntPool.Put(blockNum)
+	defer utils.GlobalBigIntPool.Put(blockNum)
 
 	token0, token1, err := s.uniswapV2Client.LoadTokens(ctx, pool, blockNum)
 	if err != nil {
@@ -108,7 +106,7 @@ func (s *EstimateServiceImpl) EstimateSwapAmount(ctx context.Context, poolAddres
 		return nil, fmt.Errorf("%w: pool has empty reserves", apperrors.ErrBusinessRule)
 	}
 
-	amountOut := utils.CalculateUniswapV2SwapAmount(srcAmount, reserveIn, reserveOut, s.bigIntPool)
+	amountOut := utils.CalculateUniswapV2SwapAmount(srcAmount, reserveIn, reserveOut, utils.GlobalBigIntPool)
 
 	return amountOut, nil
 }

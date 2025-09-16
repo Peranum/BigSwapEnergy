@@ -15,13 +15,13 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Address           string        `yaml:"address"`
-	ShutdownTimeout   time.Duration `yaml:"shutdown_timeout"`
-	HealthCheckPeriod time.Duration `yaml:"health_check_period"`
+	Address         string        `yaml:"address"`
+	ShutdownTimeout time.Duration `yaml:"shutdown_timeout"`
 }
 
 type BlockchainConfig struct {
-	EthereumRPCURL string
+	EthereumRPCURL     string `yaml:"ethereum_rpc_url"`
+	ConnectionPoolSize int    `yaml:"connection_pool_size"`
 }
 
 type RateLimitConfig struct {
@@ -57,9 +57,11 @@ func loadFromYAML(configPath string, config *Config) error {
 func getDefaultConfig() *Config {
 	return &Config{
 		Server: ServerConfig{
-			Address:           ":1337",
-			ShutdownTimeout:   30 * time.Second,
-			HealthCheckPeriod: 30 * time.Second,
+			Address:         ":1337",
+			ShutdownTimeout: 30 * time.Second,
+		},
+		Blockchain: BlockchainConfig{
+			ConnectionPoolSize: 5,
 		},
 		RateLimit: RateLimitConfig{
 			RequestsPerMinute: 600, // 10 requests per second (Infura-friendly)

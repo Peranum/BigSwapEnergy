@@ -12,6 +12,8 @@ var (
 	FeeBasisPoints990  = big.NewInt(990) // 1000 - 10 (1.0% fee)
 
 	Mask112 = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 112), big.NewInt(1))
+
+	GlobalBigIntPool = NewBigIntPool()
 )
 
 // BigIntPool provides a pool of reusable big.Int objects for memory optimization
