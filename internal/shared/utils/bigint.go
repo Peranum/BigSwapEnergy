@@ -98,41 +98,43 @@ func ParseReservesWithPool(b []byte, pool *BigIntPool) (reserve0, reserve1 *big.
 // CalculateSwapAmount calculates the swap amount using constant product AMM formula with fee
 // Formula: amountOut = (amountIn * (1000-fee) * reserveOut) / (reserveIn * 1000 + amountIn * (1000-fee))
 // This formula is used by Uniswap V2, SushiSwap, PancakeSwap, and other constant product AMMs
-func CalculateSwapAmount(amountIn, reserveIn, reserveOut *big.Int, feeBasisPoints int, pool *BigIntPool) *big.Int {
-	numerator := pool.Get()
-	denominator := pool.Get()
-	tmpCalc := pool.Get()
+// Uses zero-allocation approach with scratch variables (t1, t2) for optimal performance
+func CalculateSwapAmount(amountIn, reserveIn, reserveOut, amountOut *big.Int, feeBasisPoints int, pool *BigIntPool) {
+	t1 := pool.Get()
+	t2 := pool.Get()
 
+	var feeMultiplier *big.Int
 	switch feeBasisPoints {
 	case 3:
-		numerator.Mul(amountIn, FeeBasisPoints997)
+		feeMultiplier = FeeBasisPoints997
 	case 5:
-		numerator.Mul(amountIn, FeeBasisPoints995)
+		feeMultiplier = FeeBasisPoints995
 	case 10:
-		numerator.Mul(amountIn, FeeBasisPoints990)
+		feeMultiplier = FeeBasisPoints990
 	default:
-		feeMultiplier := pool.Get()
+		feeMultiplier = pool.Get()
 		feeMultiplier.SetInt64(int64(1000 - feeBasisPoints))
-		numerator.Mul(amountIn, feeMultiplier)
-		pool.Put(feeMultiplier)
 	}
 
-	tmpCalc.Mul(reserveIn, FeeBasisPoints1000)
-	denominator.Add(tmpCalc, numerator)
+	t1.Mul(amountIn, feeMultiplier)
 
-	tmpCalc.Mul(numerator, reserveOut)
-	result := tmpCalc.Div(tmpCalc, denominator)
+	amountOut.Mul(reserveIn, FeeBasisPoints1000)
 
-	amountOut := new(big.Int).Set(result)
+	t2.Add(amountOut, t1)
 
-	pool.Put(numerator)
-	pool.Put(denominator)
-	pool.Put(tmpCalc)
+	amountOut.Mul(t1, reserveOut)
 
-	return amountOut
+	amountOut.QuoRem(amountOut, t2, t1)
+
+	pool.Put(t1)
+	pool.Put(t2)
+	if feeBasisPoints != 3 && feeBasisPoints != 5 && feeBasisPoints != 10 {
+		pool.Put(feeMultiplier)
+	}
 }
 
-// CalculateUniswapV2SwapAmount is a convenience wrapper for Uniswap V2 with 0.3% fee
-func CalculateUniswapV2SwapAmount(amountIn, reserveIn, reserveOut *big.Int, pool *BigIntPool) *big.Int {
-	return CalculateSwapAmount(amountIn, reserveIn, reserveOut, 3, pool) // 0.3% fee
+// CalculateUniswapV2SwapAmountInto calculates swap amount and stores result in the provided big.Int
+// This version avoids allocation by reusing the provided result parameter
+func CalculateUniswapV2SwapAmount(amountIn, reserveIn, reserveOut, result *big.Int, pool *BigIntPool) {
+	CalculateSwapAmount(amountIn, reserveIn, reserveOut, result, 3, pool)
 }

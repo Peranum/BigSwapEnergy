@@ -16,3 +16,7 @@ allocations-comparison:
 memory-pressure-benchmark:
 	@echo "Testing memory pressure scenarios..."
 	@go test -bench=BenchmarkMemoryPressure -benchmem -benchtime=5s ./internal/shared/utils/
+
+allocations-test:
+	@echo "Testing CalculateUniswapV2SwapAmount allocations..."
+	@go test -bench=BenchmarkCalculateUniswapV2SwapAmountAllocations -benchmem -benchtime=5s ./internal/shared/utils/

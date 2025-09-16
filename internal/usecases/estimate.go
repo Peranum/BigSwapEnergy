@@ -106,7 +106,8 @@ func (s *EstimateServiceImpl) EstimateSwapAmount(ctx context.Context, poolAddres
 		return nil, fmt.Errorf("%w: pool has empty reserves", apperrors.ErrBusinessRule)
 	}
 
-	amountOut := utils.CalculateUniswapV2SwapAmount(srcAmount, reserveIn, reserveOut, utils.GlobalBigIntPool)
+	amountOut := utils.GlobalBigIntPool.Get()
+	utils.CalculateUniswapV2SwapAmount(srcAmount, reserveIn, reserveOut, amountOut, utils.GlobalBigIntPool)
 
 	return amountOut, nil
 }
