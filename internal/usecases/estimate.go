@@ -1,6 +1,7 @@
 package estimate
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math/big"
@@ -61,21 +62,21 @@ func (s *EstimateServiceImpl) EstimateSwapAmount(ctx context.Context, poolAddres
 		zap.String("src_amount", srcAmountStr),
 	)
 
-	if !common.IsHexAddress(poolAddress) {
-		return nil, fmt.Errorf("%w: invalid pool address format: %s", apperrors.ErrValidation, poolAddress)
+	if err := validateAddressFormat("pool", poolAddress); err != nil {
+		return nil, err
 	}
-	if !common.IsHexAddress(srcToken) {
-		return nil, fmt.Errorf("%w: invalid source token address format: %s", apperrors.ErrValidation, srcToken)
+	if err := validateAddressFormat("source token", srcToken); err != nil {
+		return nil, err
 	}
-	if !common.IsHexAddress(dstToken) {
-		return nil, fmt.Errorf("%w: invalid destination token address format: %s", apperrors.ErrValidation, dstToken)
+	if err := validateAddressFormat("destination token", dstToken); err != nil {
+		return nil, err
 	}
 
 	pool := common.HexToAddress(poolAddress)
 	src := common.HexToAddress(srcToken)
 	dst := common.HexToAddress(dstToken)
 
-	if src == dst {
+	if bytes.Equal(src[:], dst[:]) {
 		return nil, fmt.Errorf("%w: source and destination tokens cannot be the same", apperrors.ErrBusinessRule)
 	}
 
@@ -110,4 +111,12 @@ func (s *EstimateServiceImpl) EstimateSwapAmount(ctx context.Context, poolAddres
 	utils.CalculateUniswapV2SwapAmount(srcAmount, reserveIn, reserveOut, amountOut, utils.GlobalBigIntPool)
 
 	return amountOut, nil
+}
+
+// validateAddressFormat validates that the given address string is a valid hex address format
+func validateAddressFormat(addressType, address string) error {
+	if !common.IsHexAddress(address) {
+		return fmt.Errorf("%w: invalid %s address format: %s", apperrors.ErrValidation, addressType, address)
+	}
+	return nil
 }

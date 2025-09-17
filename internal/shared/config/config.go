@@ -20,8 +20,7 @@ type ServerConfig struct {
 }
 
 type BlockchainConfig struct {
-	EthereumRPCURL     string `yaml:"ethereum_rpc_url"`
-	ConnectionPoolSize int    `yaml:"connection_pool_size"`
+	EthereumRPCURL string `yaml:"ethereum_rpc_url"`
 }
 
 type RateLimitConfig struct {
@@ -60,9 +59,7 @@ func getDefaultConfig() *Config {
 			Address:         ":1337",
 			ShutdownTimeout: 30 * time.Second,
 		},
-		Blockchain: BlockchainConfig{
-			ConnectionPoolSize: 5,
-		},
+		Blockchain: BlockchainConfig{},
 		RateLimit: RateLimitConfig{
 			RequestsPerMinute: 600, // 10 requests per second (Infura-friendly)
 		},

@@ -50,9 +50,9 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	ethClient, err := ethereum.NewEthereumClient(cfg.Blockchain.EthereumRPCURL, cfg.Blockchain.ConnectionPoolSize, log)
+	ethClient, err := ethereum.NewEthereumClient(cfg.Blockchain.EthereumRPCURL, log)
 	if err != nil {
-		return fmt.Errorf("failed to create Ethereum connection pool: %w", err)
+		return fmt.Errorf("failed to create Ethereum client: %w", err)
 	}
 	defer ethClient.Close()
 

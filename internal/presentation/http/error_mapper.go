@@ -2,7 +2,6 @@ package http
 
 import (
 	"encoding/json"
-	"errors"
 
 	apperrors "bigswapenergy/internal/shared/errors"
 
@@ -72,16 +71,7 @@ var errorMappings = map[error]ErrorMapping{
 }
 
 func (h *EstimateHandler) handleError(ctx *fasthttp.RequestCtx, err error) {
-	var mapping ErrorMapping
-	var found bool
-
-	for errType, errMapping := range errorMappings {
-		if errors.Is(err, errType) {
-			mapping = errMapping
-			found = true
-			break
-		}
-	}
+	mapping, found := errorMappings[err]
 
 	if !found {
 		mapping = ErrorMapping{
@@ -113,7 +103,7 @@ func (h *EstimateHandler) handleError(ctx *fasthttp.RequestCtx, err error) {
 
 func getErrorDetails(err error, isServerError bool) string {
 	if isServerError {
-		return "" 
+		return ""
 	}
 	return err.Error()
 }

@@ -4,13 +4,12 @@ import (
 	"context"
 	"fmt"
 	"math/big"
-	"sync"
-	"sync/atomic"
+	"net/http"
 	"time"
 
-	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
 	"go.uber.org/zap"
 )
 
@@ -21,7 +20,6 @@ var (
 	ErrStorageReadFailed = fmt.Errorf("Unable to read contract data")
 )
 
-// EthereumClient defines the interface for Ethereum blockchain client with connection pooling
 type EthereumClient interface {
 	// GetLatestBlockNumber returns the number of the latest block
 	GetLatestBlockNumber(ctx context.Context) (uint64, error)
@@ -29,80 +27,58 @@ type EthereumClient interface {
 	// ReadContractStorage reads data from contract storage at specific slot
 	ReadContractStorage(ctx context.Context, contractAddress common.Address, storageKey common.Hash, blockNumber *big.Int) ([]byte, error)
 
-	// Close gracefully closes all connections in the pool
+	// Close gracefully closes the connection
 	Close() error
 
-	// GetConnectionCount returns the number of active connections
-	GetConnectionCount() int
-
-	// CheckConnectionsHealth verifies health status of all connections
-	CheckConnectionsHealth(ctx context.Context) []bool
+	// CheckConnectionHealth verifies health status of the connection
+	CheckConnectionHealth(ctx context.Context) bool
 }
 
-// ConnectionPool implements EthereumClient interface with connection pooling for high performance
-type ConnectionPool struct {
-	clients []*ethclient.Client
-	logger  *zap.Logger
-	rpcURL  string
-	mu      sync.RWMutex
-	counter uint64
-
-	bigIntPool  sync.Pool
-	callMsgPool sync.Pool
+// OptimizedEthereumClient implements EthereumClient interface with optimized HTTP connection pooling
+type OptimizedEthereumClient struct {
+	client *ethclient.Client
+	logger *zap.Logger
+	rpcURL string
 }
 
-// NewEthereumClient creates a new Ethereum client with connection pooling
-func NewEthereumClient(rpcURL string, poolSize int, logger *zap.Logger) (EthereumClient, error) {
-	clients := make([]*ethclient.Client, poolSize)
-
-	for i := 0; i < poolSize; i++ {
-		client, err := ethclient.Dial(rpcURL)
-		if err != nil {
-			for j := 0; j < i; j++ {
-				clients[j].Close()
-			}
-			return nil, err
-		}
-		clients[i] = client
+// NewEthereumClient creates a new Ethereum client with optimized HTTP connection pooling
+func NewEthereumClient(rpcURL string, logger *zap.Logger) (EthereumClient, error) {
+	transport := &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 10,
+		IdleConnTimeout:     30 * time.Second,
+		MaxConnsPerHost:     0,
+		DisableKeepAlives:   false,
+		DisableCompression:  false,
 	}
 
-	logger.Info("Created Ethereum connection pool",
+	httpClient := &http.Client{
+		Transport: transport,
+		Timeout:   30 * time.Second,
+	}
+
+	rpcClient, err := rpc.DialOptions(context.Background(), rpcURL, rpc.WithHTTPClient(httpClient))
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrConnectionFailed, err)
+	}
+
+	client := ethclient.NewClient(rpcClient)
+
+	logger.Info("Created optimized Ethereum client",
 		zap.String("url", rpcURL),
-		zap.Int("pool_size", poolSize))
+		zap.Int("max_idle_conns", transport.MaxIdleConns),
+		zap.Int("max_idle_conns_per_host", transport.MaxIdleConnsPerHost))
 
-	pool := &ConnectionPool{
-		clients: clients,
-		logger:  logger,
-		rpcURL:  rpcURL,
-	}
-
-	pool.bigIntPool = sync.Pool{
-		New: func() interface{} {
-			return new(big.Int)
-		},
-	}
-
-	pool.callMsgPool = sync.Pool{
-		New: func() interface{} {
-			return &ethereum.CallMsg{}
-		},
-	}
-
-	return pool, nil
+	return &OptimizedEthereumClient{
+		client: client,
+		logger: logger,
+		rpcURL: rpcURL,
+	}, nil
 }
 
-func (p *ConnectionPool) getClient() *ethclient.Client {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-
-	index := atomic.AddUint64(&p.counter, 1) % uint64(len(p.clients))
-	return p.clients[index]
-}
-
-// GetLatestBlockNumber returns the number of the latest block using connection pool
-func (p *ConnectionPool) GetLatestBlockNumber(ctx context.Context) (uint64, error) {
-	client := p.getClient()
-	blockNumber, err := client.BlockNumber(ctx)
+// GetLatestBlockNumber returns the number of the latest block using optimized HTTP connection pooling
+func (c *OptimizedEthereumClient) GetLatestBlockNumber(ctx context.Context) (uint64, error) {
+	blockNumber, err := c.client.BlockNumber(ctx)
 	if err != nil {
 		if isTimeoutError(err) {
 			return 0, fmt.Errorf("%w: %v", ErrRPCTimeout, err)
@@ -112,10 +88,9 @@ func (p *ConnectionPool) GetLatestBlockNumber(ctx context.Context) (uint64, erro
 	return blockNumber, nil
 }
 
-// ReadContractStorage reads data from contract storage at specific slot using connection pool
-func (p *ConnectionPool) ReadContractStorage(ctx context.Context, contractAddress common.Address, storageKey common.Hash, blockNumber *big.Int) ([]byte, error) {
-	client := p.getClient()
-	data, err := client.StorageAt(ctx, contractAddress, storageKey, blockNumber)
+// ReadContractStorage reads data from contract storage at specific slot using optimized HTTP connection pooling
+func (c *OptimizedEthereumClient) ReadContractStorage(ctx context.Context, contractAddress common.Address, storageKey common.Hash, blockNumber *big.Int) ([]byte, error) {
+	data, err := c.client.StorageAt(ctx, contractAddress, storageKey, blockNumber)
 	if err != nil {
 		if isTimeoutError(err) {
 			return nil, fmt.Errorf("%w: %v", ErrRPCTimeout, err)
@@ -125,55 +100,20 @@ func (p *ConnectionPool) ReadContractStorage(ctx context.Context, contractAddres
 	return data, nil
 }
 
-// Close gracefully closes all connections in the pool
-func (p *ConnectionPool) Close() error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	for _, client := range p.clients {
-		client.Close()
-	}
-
-	p.logger.Info("Closed Ethereum connection pool")
+// Close gracefully closes the connection
+func (c *OptimizedEthereumClient) Close() error {
+	c.client.Close()
+	c.logger.Info("Closed optimized Ethereum client")
 	return nil
 }
 
-// GetConnectionCount returns the number of active connections
-func (p *ConnectionPool) GetConnectionCount() int {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	return len(p.clients)
-}
+// CheckConnectionHealth verifies health status of the connection
+func (c *OptimizedEthereumClient) CheckConnectionHealth(ctx context.Context) bool {
+	healthCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 
-// CheckConnectionsHealth verifies health status of all connections
-func (p *ConnectionPool) CheckConnectionsHealth(ctx context.Context) []bool {
-	p.mu.RLock()
-	poolSize := len(p.clients)
-	p.mu.RUnlock()
-
-	health := make([]bool, poolSize)
-
-	var wg sync.WaitGroup
-	wg.Add(poolSize)
-
-	for i := 0; i < poolSize; i++ {
-		go func(index int) {
-			defer wg.Done()
-
-			p.mu.RLock()
-			client := p.clients[index]
-			p.mu.RUnlock()
-
-			healthCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			defer cancel()
-
-			_, err := client.BlockNumber(healthCtx)
-			health[index] = (err == nil)
-		}(i)
-	}
-
-	wg.Wait()
-	return health
+	_, err := c.client.BlockNumber(healthCtx)
+	return err == nil
 }
 
 // isTimeoutError checks if the error is a timeout error

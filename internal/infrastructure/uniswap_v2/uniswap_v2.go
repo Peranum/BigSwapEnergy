@@ -1,6 +1,7 @@
 package uniswap_v2
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math/big"
@@ -10,6 +11,16 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"go.uber.org/zap"
+)
+
+const (
+	UniswapV2Token0StorageSlot   = 6
+	UniswapV2Token1StorageSlot   = 7
+	UniswapV2ReservesStorageSlot = 8
+)
+
+var (
+	ZeroAddress = common.Address{}
 )
 
 var (
@@ -63,30 +74,30 @@ func (c *UniswapV2ClientImpl) GetLatestBlockNumber(ctx context.Context) (uint64,
 	return c.client.GetLatestBlockNumber(ctx)
 }
 
-// LoadTokens reads token0 and token1 from Uniswap V2 pair storage (slots 6 and 7)
+// LoadTokens reads token0 and token1 from Uniswap V2 pair storage
 func (c *UniswapV2ClientImpl) LoadTokens(ctx context.Context, pool common.Address, blockNum *big.Int) (common.Address, common.Address, error) {
-	token0Data, err := c.ReadStorageSlot(ctx, pool, blockNum, 6)
+	token0Data, err := c.ReadStorageSlot(ctx, pool, blockNum, UniswapV2Token0StorageSlot)
 	if err != nil {
 		return common.Address{}, common.Address{}, fmt.Errorf("failed to read token0: %w", err)
 	}
 	token0 := common.BytesToAddress(token0Data)
 
-	token1Data, err := c.ReadStorageSlot(ctx, pool, blockNum, 7)
+	token1Data, err := c.ReadStorageSlot(ctx, pool, blockNum, UniswapV2Token1StorageSlot)
 	if err != nil {
 		return common.Address{}, common.Address{}, fmt.Errorf("failed to read token1: %w", err)
 	}
 	token1 := common.BytesToAddress(token1Data)
 
-	if token0 == (common.Address{}) || token1 == (common.Address{}) {
+	if bytes.Equal(token0[:], ZeroAddress[:]) || bytes.Equal(token1[:], ZeroAddress[:]) {
 		return common.Address{}, common.Address{}, fmt.Errorf("%w for pool %s", ErrPoolNotFound, pool.Hex())
 	}
 
 	return token0, token1, nil
 }
 
-// LoadReserves reads reserves from Uniswap V2 pair storage (slot 8)
+// LoadReserves reads reserves from Uniswap V2 pair storage
 func (c *UniswapV2ClientImpl) LoadReserves(ctx context.Context, pool common.Address, blockNum *big.Int) (*big.Int, *big.Int, error) {
-	reserveData, err := c.ReadStorageSlot(ctx, pool, blockNum, 8)
+	reserveData, err := c.ReadStorageSlot(ctx, pool, blockNum, UniswapV2ReservesStorageSlot)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to read reserves: %w", err)
 	}
@@ -103,9 +114,9 @@ func (c *UniswapV2ClientImpl) LoadReserves(ctx context.Context, pool common.Addr
 // DetermineReserveOrder determines which reserve corresponds to src and dst tokens
 func (c *UniswapV2ClientImpl) DetermineReserveOrder(src, dst, token0, token1 common.Address, reserve0, reserve1 *big.Int) (*big.Int, *big.Int, error) {
 	switch {
-	case src == token0 && dst == token1:
+	case bytes.Equal(src[:], token0[:]) && bytes.Equal(dst[:], token1[:]):
 		return reserve0, reserve1, nil
-	case src == token1 && dst == token0:
+	case bytes.Equal(src[:], token1[:]) && bytes.Equal(dst[:], token0[:]):
 		return reserve1, reserve0, nil
 	default:
 		return nil, nil, fmt.Errorf("%w: src=%s dst=%s token0=%s token1=%s",

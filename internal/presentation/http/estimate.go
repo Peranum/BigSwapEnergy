@@ -46,13 +46,12 @@ func (h *EstimateHandler) EstimateSwapAmount(ctx *fasthttp.RequestCtx) {
 	}
 
 	dstAmount, err := h.estimateService.EstimateSwapAmount(ctx, poolAddress, srcToken, dstToken, srcAmountBig)
-
-	totalDuration := time.Since(startTime)
-
 	if err != nil {
 		h.handleError(ctx, err)
 		return
 	}
+
+	totalDuration := time.Since(startTime)
 
 	h.logger.Info("Estimate completed", zap.Duration("duration", totalDuration))
 
